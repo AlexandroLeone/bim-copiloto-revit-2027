@@ -1,0 +1,57 @@
+// Execute no contexto da Revit API. Ajuste o caminho da DLL abaixo.
+var path = @"C:\Users\Digimax\Documents\Codex\2026-09-28\analisa-todo-o-projeto-que-est\outputs\ChatGPTRevitPlugin\dist\release\BIMCopiloto.dll";
+var context = new System.Runtime.Loader.AssemblyLoadContext("BIMCopilotoTests-" + Guid.NewGuid(), true);
+var assembly = context.LoadFromStream(new System.IO.MemoryStream(System.IO.File.ReadAllBytes(path)));
+var parse = assembly.GetType("ChatGPTRevit.EditPlanParser").GetMethod("Parse");
+var apply = assembly.GetType("ChatGPTRevit.EditPlanExecutor").GetMethod("Apply");
+var results = new List<object>();
+var scratch = app.Application.NewProjectDocument(UnitSystem.Metric);
+try {
+    Level level;
+    using (var setup = new Transaction(scratch, "Fixture")) { setup.Start(); level = Level.Create(scratch, 0); level.Name="Teste Copiloto"; setup.Commit(); }
+    var wallType = new FilteredElementCollector(scratch).OfClass(typeof(WallType)).Cast<WallType>().First(w=>w.Kind==WallKind.Basic);
+    var floorType = new FilteredElementCollector(scratch).OfClass(typeof(FloorType)).Cast<FloorType>().First();
+    Func<string,bool,object> run = (json, preview) => apply.Invoke(null, new object[] {scratch,parse.Invoke(null,new object[]{json}),preview,new HashSet<string>()});
+    var plan = "{\"summary\":\"Fixture\",\"actions\":["+
+      "{\"operation\":\"create_wall\",\"key\":\"w1\",\"typeId\":"+wallType.Id.Value+",\"levelName\":\"Teste Copiloto\",\"xMm\":0,\"yMm\":0,\"x2Mm\":5000,\"y2Mm\":0},"+
+      "{\"operation\":\"create_wall\",\"key\":\"w2\",\"typeId\":"+wallType.Id.Value+",\"levelName\":\"Teste Copiloto\",\"xMm\":5000,\"yMm\":0,\"x2Mm\":5000,\"y2Mm\":4000},"+
+      "{\"operation\":\"create_wall\",\"key\":\"w3\",\"typeId\":"+wallType.Id.Value+",\"levelName\":\"Teste Copiloto\",\"xMm\":5000,\"yMm\":4000,\"x2Mm\":0,\"y2Mm\":4000},"+
+      "{\"operation\":\"create_wall\",\"key\":\"w4\",\"typeId\":"+wallType.Id.Value+",\"levelName\":\"Teste Copiloto\",\"xMm\":0,\"yMm\":4000,\"x2Mm\":0,\"y2Mm\":0},"+
+      "{\"operation\":\"create_floor\",\"typeId\":"+floorType.Id.Value+",\"levelName\":\"Teste Copiloto\",\"points\":[{\"x\":0,\"y\":0},{\"x\":5000,\"y\":0},{\"x\":5000,\"y\":4000},{\"x\":0,\"y\":4000}]},"+
+      "{\"operation\":\"create_room\",\"levelName\":\"Teste Copiloto\",\"xMm\":2500,\"yMm\":2000,\"value\":\"Sala teste\"},"+
+      "{\"operation\":\"create_plan\",\"levelName\":\"Teste Copiloto\"},"+
+      "{\"operation\":\"create_material\",\"materialName\":\"Material teste\",\"colorHex\":\"#336699\"}]}";
+    var stampMethod=assembly.GetType("ChatGPTRevit.EditPlanExecutor").GetMethod("Stamp");
+    var stampBefore=(string)stampMethod.Invoke(null,new object[]{scratch});
+    if(stampBefore!=(string)stampMethod.Invoke(null,new object[]{scratch})) throw new Exception("Unstable model stamp");
+    var before = new FilteredElementCollector(scratch).GetElementCount();
+    var simulation = run(plan,true);
+    var after = new FilteredElementCollector(scratch).GetElementCount();
+    if(stampBefore!=(string)stampMethod.Invoke(null,new object[]{scratch})) throw new Exception("Model stamp changed after rollback");
+    results.Add(new {test="stable_model_stamp_after_preview",passed=true});
+    if(before!=after) throw new Exception("Preview did not roll back");
+    results.Add(new { test="walls_floor_room_material_view_preview_rolls_back", passed=true, before, after });
+    var committed = run(plan,false);
+    var walls = new FilteredElementCollector(scratch).OfClass(typeof(Wall)).Cast<Wall>().ToArray();
+    if(walls.Length!=4) throw new Exception("Commit walls failed");
+    results.Add(new { test="commit_rectangle_floor_room_material_view", passed=true, walls=walls.Length });
+    var first=walls[0];
+    var existing=new FilteredElementCollector(scratch).GetElementCount();
+    var invalid="{\"actions\":[{\"operation\":\"create_material\",\"materialName\":\"Must rollback\"},{\"operation\":\"move\",\"elementId\":999999999,\"dxMm\":100}]}";
+    bool rejected=false;
+    try {run(invalid,false);} catch(System.Reflection.TargetInvocationException) {rejected=true;}
+    if(!rejected || existing!=new FilteredElementCollector(scratch).GetElementCount()) throw new Exception("Atomic rollback failed");
+    results.Add(new {test="failure_in_second_action_rolls_back_first",passed=true});
+    var editing="{\"actions\":[{\"operation\":\"set_parameter\",\"elementId\":"+first.Id.Value+",\"parameterName\":\"Comentários\",\"value\":\"teste\"},"+
+      "{\"operation\":\"move\",\"elementId\":"+first.Id.Value+",\"dxMm\":100},"+
+      "{\"operation\":\"delete\",\"elementId\":"+walls[2].Id.Value+"}]}";
+    var details=run(editing,true);
+    if(new FilteredElementCollector(scratch).OfClass(typeof(Wall)).GetElementCount()!=4) throw new Exception("Delete preview rollback failed");
+    var deletedCount=((System.Collections.ICollection)details.GetType().GetProperty("Deleted").GetValue(details)).Count;
+    var modifiedCount=((System.Collections.ICollection)details.GetType().GetProperty("Modified").GetValue(details)).Count;
+    if(deletedCount < 1 || modifiedCount < 1) throw new Exception("Missing diff");
+    results.Add(new { test="parameter_move_delete_preview",passed=true, detail=System.Text.Json.JsonSerializer.Serialize(details, details.GetType()) });
+    return new { tests=results, activeDocumentUntouched=doc.Title, assembly=assembly.FullName };
+} catch(Exception ex) {
+    return new {tests=results,error=ex.ToString()};
+} finally {scratch.Close(false); context.Unload();}

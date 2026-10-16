@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup>
+  <OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF>
+  <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+ </PropertyGroup>
+ <ItemGroup>
+  <Compile Include="../src/Models.cs" Link="Models.cs"/>
+  <Compile Include="../src/AssistantModels.cs" Link="AssistantModels.cs"/>
+  <Compile Include="../src/TraceModels.cs" Link="TraceModels.cs"/>
+  <Compile Include="../src/PlanRules.cs" Link="PlanRules.cs"/>
+  <Compile Include="../src/EditPlanParser.cs" Link="EditPlanParser.cs"/>
+  <Compile Include="../src/OpenAIClient.cs" Link="OpenAIClient.cs"/>
+  <Compile Include="../src/IAssistantClient.cs" Link="IAssistantClient.cs"/>
+  <Compile Include="../src/GeminiClient.cs" Link="GeminiClient.cs"/>
+ </ItemGroup>
+</Project>

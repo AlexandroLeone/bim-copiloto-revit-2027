@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>BIM Copiloto</Name>
+    <Assembly>__ASSEMBLY_PATH__</Assembly>
+    <AddInId>2D3A5F8A-4A3C-4A78-9B5D-6D6E7E3D1B10</AddInId>
+    <FullClassName>ChatGPTRevit.App</FullClassName>
+    <VendorId>local.chatgpt.revit</VendorId>
+    <VendorDescription>Conversa, imagens e modelagem assistida com revisão no Revit.</VendorDescription>
+  </AddIn>
+</RevitAddIns>
